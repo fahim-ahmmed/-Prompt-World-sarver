@@ -27,17 +27,55 @@ app.use(
 );
 app.use(express.json());
 
-// Database Connection
+// Serverless-friendly MongoDB Connection Handler (Caching)
+let cached = global.mongoose;
+if (!cached) {
+  cached = global.mongoose = { conn: null, promise: null };
+}
+
 const connectDB = async () => {
-  try {
-    const conn = await mongoose.connect(
-      process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/promptworld"
-    );
-    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`❌ Database Connection Error: ${error.message}`);
+  if (cached.conn) {
+    return cached.conn;
   }
+
+  if (!cached.promise) {
+    const opts = {
+      bufferCommands: false,
+      serverSelectionTimeoutMS: 5000,
+    };
+
+    cached.promise = mongoose
+      .connect(process.env.MONGODB_URI, opts)
+      .then((mongooseInstance) => {
+        console.log("✅ MongoDB Connected via Serverless Cache");
+        return mongooseInstance;
+      });
+  }
+
+  try {
+    cached.conn = await cached.promise;
+  } catch (e) {
+    cached.promise = null;
+    throw e;
+  }
+
+  return cached.conn;
 };
+
+// Middleware to ensure DB connection on every request before reaching routes
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("❌ DB Connection Middleware Error:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Database Connection Failed",
+      error: error.message,
+    });
+  }
+});
 
 // Base Route for Health Check
 app.get("/", (req, res) => {
@@ -56,7 +94,7 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/bookmarks", bookmarkRoutes);
 
-// Fallback Route - Returns JSON instead of HTML 404 to avoid JSON syntax errors on client
+// Fallback Route - Returns JSON instead of HTML 404
 app.use((req, res) => {
   res.status(404).json({ success: false, message: "Route Not Found" });
 });
@@ -69,9 +107,6 @@ app.use((err, req, res, next) => {
     message: err.message || "Internal Server Error",
   });
 });
-
-// Database Connection
-connectDB();
 
 // Only listen locally, NOT on Vercel
 if (process.env.NODE_ENV !== "production") {
