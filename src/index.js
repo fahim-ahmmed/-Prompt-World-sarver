@@ -18,7 +18,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middlewares - Fixed CORS configuration to support all origins without crashing
+// Middlewares - CORS
 app.use(
   cors({
     origin: "*",
@@ -38,17 +38,26 @@ const connectDB = async () => {
     return cached.conn;
   }
 
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
+    throw new Error("MONGODB_URI is undefined in environment variables!");
+  }
+
   if (!cached.promise) {
     const opts = {
       bufferCommands: false,
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 10000, // টাইমআউট বাড়িয়ে ১০ সেকেন্ড করা হয়েছে
     };
 
     cached.promise = mongoose
-      .connect(process.env.MONGODB_URI, opts)
+      .connect(uri, opts)
       .then((mongooseInstance) => {
         console.log("✅ MongoDB Connected via Serverless Cache");
         return mongooseInstance;
+      })
+      .catch((err) => {
+        cached.promise = null;
+        throw err;
       });
   }
 
@@ -62,8 +71,16 @@ const connectDB = async () => {
   return cached.conn;
 };
 
-// Middleware to ensure DB connection on every request before reaching routes
-app.use(async (req, res, next) => {
+// Base Route for Health Check (DB ছাড়াই চলবে যাতে সার্ভার স্ট্যাটাস বুঝা যায়)
+app.get("/", (req, res) => {
+  res.json({
+    status: "online",
+    message: "PromptWorld API Server is Running Smoothly 🚀",
+  });
+});
+
+// Middleware to ensure DB connection ONLY on API routes
+app.use("/api", async (req, res, next) => {
   try {
     await connectDB();
     next();
@@ -75,14 +92,6 @@ app.use(async (req, res, next) => {
       error: error.message,
     });
   }
-});
-
-// Base Route for Health Check
-app.get("/", (req, res) => {
-  res.json({
-    status: "online",
-    message: "PromptWorld API Server is Running Smoothly 🚀",
-  });
 });
 
 // API Routes
