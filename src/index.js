@@ -70,13 +70,15 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Server Initialization
+// Database Connection
 connectDB();
 
+// Only listen locally, NOT on Vercel
 if (process.env.NODE_ENV !== "production") {
   app.listen(PORT, () => {
     console.log(`🚀 Server listening on http://localhost:${PORT}`);
   });
 }
 
+// MUST export app for Vercel Serverless Functions
 export default app;
