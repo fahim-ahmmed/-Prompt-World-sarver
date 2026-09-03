@@ -4,7 +4,7 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 
 // Route Imports
-import authRoutes from "./routes/authRoutes.js"; // আপনার বিদ্যমান Auth Routes (যদি থাকে)
+import authRoutes from "./routes/authRoutes.js";
 import promptRoutes from "./routes/promptRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
@@ -18,10 +18,10 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middlewares
+// Middlewares - Fixed CORS configuration to support all origins without crashing
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
+    origin: "*",
     credentials: true,
   })
 );
@@ -30,11 +30,12 @@ app.use(express.json());
 // Database Connection
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/promptworld");
+    const conn = await mongoose.connect(
+      process.env.MONGODB_URI || "mongodb://127.0.0.1:27017/promptworld"
+    );
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
     console.error(`❌ Database Connection Error: ${error.message}`);
-    process.exit(1);
   }
 };
 
@@ -55,6 +56,11 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/bookmarks", bookmarkRoutes);
 
+// Fallback Route - Returns JSON instead of HTML 404 to avoid JSON syntax errors on client
+app.use((req, res) => {
+  res.status(404).json({ success: false, message: "Route Not Found" });
+});
+
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error("Internal Error Stack:", err.stack);
@@ -65,8 +71,12 @@ app.use((err, req, res, next) => {
 });
 
 // Server Initialization
-connectDB().then(() => {
+connectDB();
+
+if (process.env.NODE_ENV !== "production") {
   app.listen(PORT, () => {
     console.log(`🚀 Server listening on http://localhost:${PORT}`);
   });
-});
+}
+
+export default app;
